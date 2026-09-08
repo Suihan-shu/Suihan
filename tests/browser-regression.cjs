@@ -102,19 +102,24 @@ async function serve(root) {
     await page.screenshot({ path: path.join(artifacts, 'cv-mobile.png'), fullPage: true });
     console.log('PASS mobile TOC, scroll progress and dynamic content growth');
     // Populate travel data only inside this local test page, never in source content.
+    const travelOriginal = '/assets/img/travel/e10dbec6-f54c-4630-ac89-e30957bf2ef6.jpg';
+    const travelThumbnail = travelOriginal + '.thumb.webp';
+    const photoRequests = [];
     await page.setRequestInterception(true);
     page.on('request', req => {
+      if (req.url().includes('/assets/img/travel/')) photoRequests.push(req.url());
       if (req.url().endsWith('/travel/')) {
         let html = fs.readFileSync(path.join(siteDir, 'travel/index.html'), 'utf8');
         const trips = [
-          { title: 'Original format', date: '2026-09-04', location: '西安', text: '原格式', photos: [{ file: `${basePath}/assets/img/profile.jpg` }] },
-          { title: 'CMS format', date_range: '2026-09-05', destination: '成都', summary: '后台格式', photos: [{ url: `${basePath}/assets/img/profile.jpg` }] }
+          { title: 'Original format', date: '2026-09-04', location: '西安', text: '原格式', photos: [{ file: `${basePath}/assets/img/profile.jpg`, thumbnail: `${basePath}/assets/img/travel/missing.webp` }] },
+          { title: 'CMS format', date_range: '2026-09-05', destination: '成都', summary: '后台格式', photos: [{ url: travelOriginal, thumbnail: travelThumbnail }] }
         ];
         html = html.replace(/(<script[^>]*id="travel-log-data"[^>]*>)[\s\S]*?(<\/script>)/, '$1' + JSON.stringify(trips) + '$2');
         req.respond({ status: 200, contentType: 'text/html', body: html });
       } else req.continue();
     });
     await visit(optimized.url + '/travel/');
+    assert.equal(photoRequests.length, 0, 'Locked travel photos must not be fetched');
     assert.equal(await page.$eval('#travel-password', el => el.autocomplete), 'section-travel current-password');
     await page.type('#travel-password', 'wrong');
     await page.click('#travel-unlock-button');
@@ -127,9 +132,20 @@ async function serve(root) {
     assert.equal(await page.$$eval('.travel-entry', els => els.length), 2);
     assert.ok((await page.$eval('.travel-entry__text', el => el.textContent)).startsWith('CMS format'));
     assert.ok((await page.$eval('#travel-entry-grid', el => el.textContent)).includes('成都'));
+    await page.waitForFunction(() => document.querySelector('.travel-photo__image').naturalWidth > 0);
+    assert.ok((await page.$eval('.travel-photo__image', el => el.currentSrc)).endsWith(travelThumbnail));
+    assert.equal(await page.$eval('.travel-photo__image', el => el.loading), 'eager');
+    assert.equal(await page.$eval('.travel-photo__image', el => el.fetchPriority), 'high');
+    assert.ok(!photoRequests.some(url => url.endsWith(travelOriginal)), 'Original loads only after clicking');
+    await page.screenshot({ path: path.join(artifacts, 'travel-thumbnails-mobile.png'), fullPage: true });
     await page.click('.travel-photo');
+    await page.waitForFunction(() => document.querySelector('#travel-lightbox-image').naturalWidth > 0);
+    assert.ok((await page.$eval('#travel-lightbox-image', el => el.currentSrc)).endsWith(travelOriginal));
     assert.equal(await page.$eval('#travel-lightbox', el => el.hidden), false);
     await page.keyboard.press('Escape');
+    await page.$eval('.travel-entry:last-child .travel-photo', el => el.scrollIntoView({ block: 'center' }));
+    await page.waitForFunction(() => { const img = document.querySelector('.travel-entry:last-child .travel-photo__image'); return img?.complete && img.naturalWidth > 0 && img.src.endsWith('/assets/img/profile.jpg'); });
+    assert.equal(await page.$eval('.travel-entry:last-child .travel-photo', el => el.disabled), false);
     await page.click('#travel-lock-button');
     assert.equal(await page.$$eval('.travel-entry', els => els.length), 0);
     console.log('PASS travel password, both data formats, photo preview and lock');
@@ -150,6 +166,7 @@ async function serve(root) {
     };
     const writes = [];
     let failTravelRead = false;
+    let failThumbnailUpload = true;
     const admin = await browser.newPage();
     admin.on('pageerror', error => errors.push(error.message));
     await admin.setViewport({ width: 1280, height: 1000 });
@@ -172,6 +189,7 @@ async function serve(root) {
         const file = files[filePath];
         return file ? reply(200, { ...file, encoding: 'base64', content: Buffer.from(file.content).toString('base64') }) : reply(404, {});
       }
+      if (failThumbnailUpload && filePath.includes('.thumb.')) { failThumbnailUpload = false; return reply(500, { message: 'Temporary upload failure' }); }
       const payload = JSON.parse(request.postData());
       if (payload.sha !== files[filePath]?.sha) return reply(409, {});
       writes.push({ filePath, payload });
@@ -226,13 +244,28 @@ async function serve(root) {
     assert.ok((await admin.$eval('#travel-live-preview', el => el.textContent)).includes('修改后的文案'));
     await admin.$eval('#cms-travel-form', el => el.requestSubmit());
     await admin.waitForFunction(() => !document.querySelector('#travel-submit-btn').disabled);
-    assert.equal(writes.length, 5, 'One photo upload and one metadata save');
+    assert.equal(writes.length, 4, 'Original upload succeeds but failed thumbnail leaves metadata untouched');
+    assert.ok((await admin.$eval('#travel-manager-status', el => el.textContent)).includes('未能保存'));
+    assert.equal(await admin.$$eval('.moments-photo-tile', els => els.length), 1);
+    await admin.$eval('#cms-travel-form', el => el.requestSubmit());
+    await admin.waitForFunction(() => !document.querySelector('#travel-submit-btn').disabled);
+    assert.equal(writes.length, 6, 'Retry adds the thumbnail and metadata without duplicating the original');
+    const photoWrites = writes.filter(write => write.filePath.startsWith('assets/img/'));
+    assert.equal(photoWrites.length, 2);
+    const thumbnailWrite = photoWrites.find(write => write.filePath.endsWith('.thumb.webp'));
+    assert.ok(thumbnailWrite, 'Browser generated WebP');
+    const thumbnailBytes = Buffer.from(thumbnailWrite.payload.content, 'base64');
+    assert.equal(thumbnailBytes.toString('ascii', 8, 12), 'WEBP');
+    assert.ok(thumbnailBytes.length < Buffer.from(photoWrites[0].payload.content, 'base64').length);
+    assert.equal(await admin.evaluate(() => window.TravelImages.createThumbnail(new Blob(['GIF89a'], { type: 'image/gif' }))), null, 'GIF animation stays intact');
     const editedTravel = yaml.load(files['_data/travel.yml'].content, { schema: yaml.JSON_SCHEMA });
     assert.equal(editedTravel.entries.length, 2);
     assert.equal(editedTravel.entries[0].id, firstId);
     assert.equal(editedTravel.entries[0].text, '修改后的文案');
     assert.equal(editedTravel.entries[0].location, '');
     assert.equal(editedTravel.entries[0].photos.length, 1);
+    assert.ok(editedTravel.entries[0].photos[0].thumbnail.endsWith('.thumb.webp'));
+    assert.ok(editedTravel.entries[0].photos[0].file.endsWith('.jpg'));
     assert.deepEqual(editedTravel.entries[1], originalTravel.entries[0]);
     // Newly published photos can be previewed before Pages deploys them.
     await admin.$eval('#travel-management-list .travel-photo', el => el.scrollIntoView({ behavior: 'instant', block: 'center' }));
@@ -252,7 +285,7 @@ async function serve(root) {
     files['_data/travel.yml'].sha = 'remote-change';
     await admin.$eval('#cms-travel-form', el => el.requestSubmit());
     await admin.waitForFunction(() => !document.querySelector('#travel-submit-btn').disabled);
-    assert.equal(writes.length, 5);
+    assert.equal(writes.length, 6);
     assert.equal(await admin.$eval('#travel-entry-summary', el => el.value), '冲突时保留的草稿');
     assert.ok((await admin.$eval('#travel-manager-status', el => el.textContent)).includes('另一处更新'));
     admin.on('dialog', dialog => dialog.accept());
@@ -262,14 +295,14 @@ async function serve(root) {
     await admin.$eval('#travel-management-list .moment-delete', el => el.scrollIntoView({ behavior: 'instant', block: 'center' }));
     await admin.$eval('#travel-management-list .moment-delete', el => el.click());
     await admin.waitForFunction(() => document.querySelector('#travel-manager-status').textContent.includes('动态已删除'));
-    assert.equal(writes.length, 6);
+    assert.equal(writes.length, 7);
     assert.equal(yaml.load(files['_data/travel.yml'].content).entries.length, 1);
-    assert.equal(writes.filter(write => write.filePath.startsWith('assets/img/')).length, 1);
+    assert.equal(writes.filter(write => write.filePath.startsWith('assets/img/')).length, 2);
     failTravelRead = true;
     await admin.$eval('#travel-entry-summary', el => { el.value = '读取失败'; el.dispatchEvent(new Event('input')); });
     await admin.$eval('#cms-travel-form', el => el.requestSubmit());
     await admin.waitForFunction(() => !document.querySelector('#travel-submit-btn').disabled);
-    assert.equal(writes.length, 6, 'A failed travel read must never overwrite the document');
+    assert.equal(writes.length, 7, 'A failed travel read must never overwrite the document');
     // Clear the local test draft before closing the page.
     await admin.$eval('#travel-cancel-btn', el => el.click());
     await admin.close();

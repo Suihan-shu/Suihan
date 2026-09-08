@@ -53,3 +53,14 @@ test('photo resolver respects the project base path and rejects executable URLs'
   assert.equal(data.resolvePhoto('javascript:alert(1)'), '');
   assert.equal(data.resolvePhoto({}), '');
 });
+
+
+test('thumbnail resolution supports legacy photos, metadata and safe fallback', () => {
+  const photo = { file: '/assets/img/travel/full.jpg', thumbnail: '/assets/img/travel/small.webp', caption: 'keep' };
+  assert.equal(data.resolveThumbnail(photo, '/MyPage-suihan'), 'https://example.com/MyPage-suihan/assets/img/travel/small.webp');
+  assert.equal(data.resolvePhoto(photo, '/MyPage-suihan'), 'https://example.com/MyPage-suihan/assets/img/travel/full.jpg');
+  assert.equal(data.resolveThumbnail('/assets/img/old.jpg', '/MyPage-suihan'), 'https://example.com/MyPage-suihan/assets/img/old.jpg');
+  assert.equal(data.resolveThumbnail({ ...photo, thumbnail: 'javascript:alert(1)' }, '/MyPage-suihan'), data.resolvePhoto(photo, '/MyPage-suihan'));
+  const updated = data.updateEntry({}, { text: '', date: '2026-09-08', location: '', photos: [photo] });
+  assert.deepEqual(plain(updated.photos), [photo]);
+});

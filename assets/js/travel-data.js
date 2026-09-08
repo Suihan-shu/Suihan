@@ -28,6 +28,7 @@
       return ['http:', 'https:', 'blob:'].includes(url.protocol) ? url.href : '';
     } catch { return ''; }
   };
+  const resolveThumbnail = (photo, baseUrl = '') => resolvePhoto(photo?.thumbnail, baseUrl) || resolvePhoto(photo, baseUrl);
   const updateEntry = (original, draft) => {
     const now = new Date();
     const result = { ...original, id: original?.id || `moment-${crypto.randomUUID()}`,
@@ -63,12 +64,16 @@
         const button = element('button', 'travel-photo'); button.type = 'button';
         button.setAttribute('aria-label', `查看第 ${index + 1} 张照片`);
         const source = sourceForPhoto ? sourceForPhoto(photo) : resolvePhoto(photo, baseUrl);
+        const thumbnail = sourceForPhoto ? sourceForPhoto(photo, true) : resolveThumbnail(photo, baseUrl);
         const image = element('img', 'travel-photo__image');
         image.alt = localized(photo?.alt) || `旅行照片 ${index + 1}`;
         image.loading = 'lazy'; image.decoding = 'async';
-        if (source) image.src = source;
+        if (thumbnail) image.src = thumbnail;
         const unavailable = () => { button.disabled = true; button.classList.add('travel-photo--error'); button.replaceChildren(element('span', '', '照片暂时无法显示')); };
-        image.addEventListener('error', unavailable);
+        image.addEventListener('error', () => {
+          if (source && image.src !== source) { image.src = source; return; }
+          unavailable();
+        });
         button.append(image);
         if (!source) unavailable();
         button.addEventListener('click', () => onPhoto?.(source, image.alt, localized(photo?.caption), button));
@@ -86,5 +91,5 @@
     card.append(portrait, content);
     return card;
   };
-  window.TravelData = { localized, photoPath, normalize, today, sortKey, resolvePhoto, updateEntry, render };
+  window.TravelData = { localized, photoPath, normalize, today, sortKey, resolvePhoto, resolveThumbnail, updateEntry, render };
 })();

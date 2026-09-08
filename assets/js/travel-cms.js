@@ -12,7 +12,8 @@
     const list = $('travel-management-list'), status = $('travel-manager-status');
     const savedPreviews = new Map();
     const options = { author: app.dataset.author, avatar: app.dataset.avatar, baseUrl: app.dataset.baseurl };
-    options.sourceForPhoto = photo => savedPreviews.get(window.TravelData.photoPath(photo)) || resolvePhoto(photo, options.baseUrl);
+    options.sourceForPhoto = (photo, thumbnail = false) => savedPreviews.get(window.TravelData.photoPath(photo))
+      || (thumbnail ? window.TravelData.resolveThumbnail(photo, options.baseUrl) : resolvePhoto(photo, options.baseUrl));
     let data = null, sha = null, editing = null, photos = [], dirty = false, busy = false, revision = 0;
     const dialog = document.createElement('dialog'); dialog.className = 'moments-photo-dialog';
     const close = document.createElement('button'); close.type = 'button'; close.textContent = '关闭照片';
@@ -120,11 +121,24 @@
           const photo = photos[index];
           if (!photo.file) continue;
           message(`正在上传照片 ${index + 1} / ${photos.length}…`);
-          const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' })[photo.file.type];
-          const path = `assets/img/travel/${crypto.randomUUID()}.${extension}`;
-          await cms.uploadBinary(path, photo.file, 'Add travel photo');
-          // Keep successful uploads on a failed retry instead of uploading duplicate files.
-          photo.value = '/' + path; photo.file = null;
+          // Keep stable paths and completed steps so a partial upload can be retried.
+          if (!photo.upload) {
+            const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' })[photo.file.type];
+            const path = `assets/img/travel/${crypto.randomUUID()}.${extension}`;
+            const thumbnail = await window.TravelImages.createThumbnail(photo.file);
+            photo.upload = { path, thumbnail, thumbnailPath: thumbnail ? `${path}.thumb.${thumbnail.type === 'image/webp' ? 'webp' : 'png'}` : null };
+          }
+          const upload = photo.upload;
+          if (!upload.originalDone) {
+            await cms.uploadBinary(upload.path, photo.file, 'Add travel photo');
+            upload.originalDone = true;
+          }
+          if (upload.thumbnail && !upload.thumbnailDone) {
+            await cms.uploadBinary(upload.thumbnailPath, upload.thumbnail, 'Add travel thumbnail');
+            upload.thumbnailDone = true;
+          }
+          photo.value = upload.thumbnail ? { file: '/' + upload.path, thumbnail: '/' + upload.thumbnailPath } : '/' + upload.path;
+          photo.file = null; photo.upload = null;
         }
         await readCurrent();
         const updated = updateEntry(editing == null ? null : data.entries[editing], draft());

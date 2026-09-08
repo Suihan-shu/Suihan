@@ -3,14 +3,20 @@ entries:
   - id: moment-17ad397a-9f61-4f87-9b3f-d2aa9d9f06d0
     text: 2023年8月7日-8月11日
     location: 四川 四姑娘山
-    date: 2026-09-06
+    date: '2026-09-06'
     photos:
-      - /assets/img/travel/e10dbec6-f54c-4630-ac89-e30957bf2ef6.jpg
-      - /assets/img/travel/fa9855f6-7863-4e74-b6a8-5e88bfc00e75.jpg
-      - /assets/img/travel/e37993d7-d585-43e3-8554-e9a799360d92.jpg
-      - /assets/img/travel/87fa4342-e997-4dcd-9467-83203a41ac2b.jpg
-      - /assets/img/travel/89528123-1aff-42bb-9974-bcfb93f786cd.jpg
-      - /assets/img/travel/0a2d9e2c-4aef-46f8-b5c8-93a31f6995a3.jpg
-    updated_at: 2026-09-05T16:42:38.586Z
-    created_at: 2026-09-05T16:42:38.586Z
+      - file: /assets/img/travel/e10dbec6-f54c-4630-ac89-e30957bf2ef6.jpg
+        thumbnail: /assets/img/travel/e10dbec6-f54c-4630-ac89-e30957bf2ef6.jpg.thumb.webp
+      - file: /assets/img/travel/fa9855f6-7863-4e74-b6a8-5e88bfc00e75.jpg
+        thumbnail: /assets/img/travel/fa9855f6-7863-4e74-b6a8-5e88bfc00e75.jpg.thumb.webp
+      - file: /assets/img/travel/e37993d7-d585-43e3-8554-e9a799360d92.jpg
+        thumbnail: /assets/img/travel/e37993d7-d585-43e3-8554-e9a799360d92.jpg.thumb.webp
+      - file: /assets/img/travel/87fa4342-e997-4dcd-9467-83203a41ac2b.jpg
+        thumbnail: /assets/img/travel/87fa4342-e997-4dcd-9467-83203a41ac2b.jpg.thumb.webp
+      - file: /assets/img/travel/89528123-1aff-42bb-9974-bcfb93f786cd.jpg
+        thumbnail: /assets/img/travel/89528123-1aff-42bb-9974-bcfb93f786cd.jpg.thumb.webp
+      - file: /assets/img/travel/0a2d9e2c-4aef-46f8-b5c8-93a31f6995a3.jpg
+        thumbnail: /assets/img/travel/0a2d9e2c-4aef-46f8-b5c8-93a31f6995a3.jpg.thumb.webp
+    updated_at: '2026-09-05T16:42:38.586Z'
+    created_at: '2026-09-05T16:42:38.586Z'
     time: '00:42'

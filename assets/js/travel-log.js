@@ -67,7 +67,17 @@
     emptyState.hidden = sortedEntries.length > 0;
     gate.hidden = true;
     journal.hidden = false;
-    lockButton.focus();
+    // Reveal first, then prioritize only photos actually visible in the viewport.
+    let firstVisible = true;
+    entryGrid.querySelectorAll('.travel-photo__image').forEach(image => {
+      const bounds = image.getBoundingClientRect();
+      if (bounds.top < window.innerHeight && bounds.bottom > 0) {
+        image.loading = 'eager';
+        if (firstVisible) image.fetchPriority = 'high';
+        firstVisible = false;
+      }
+    });
+    lockButton.focus({ preventScroll: true });
   };
 
   const setStatus = (message, isError = false) => {
